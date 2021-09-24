@@ -27,7 +27,7 @@ config ServiceArg 'conf'                    #请不要改动
 
 运行：LTEService 配置文件 日志文件名 日志等级
 
-文件名需要带完整路径。
+文件名需要带完整路径，非openwrt请注意权限。配置文件默认为程序所在目录的LTEServiceConf，日志默认为程序目录的lte_status.log，等级0。
 
 日志等级0~3，0最少，如果出现不稳定不妨试着逐步提高来摸摸情况。
 
