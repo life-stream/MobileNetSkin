@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <unistd.h>
 #include "Log.h"
+#include <errno.h>
+#include <cstring>
 
 using namespace std;
 
