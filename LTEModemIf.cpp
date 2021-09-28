@@ -34,11 +34,14 @@ CLTEModemIf::~CLTEModemIf()
 bool CLTEModemIf::InitModem( string dev_name )
 {
     LogOutLine( "InitModem called.", 3 );
-    if( !filesystem::exists( dev_name ) ) //³öÎÊÌâ¶à°ëÊÇÉè±¸ÍÑÏßÁË
+    if( !filesystem::exists( dev_name ) ) //å‡ºé—®é¢˜å¤šåŠæ˜¯è®¾å¤‡è„±çº¿äº†
     {
         LogOutLine( "Usb communication interface offline.");
         return false;
     }
+
+    if( m_fd != -1 )
+        close( m_fd );
 
     m_fd = open( dev_name.c_str(), O_RDWR|O_NOCTTY|O_NDELAY );
 
@@ -48,25 +51,31 @@ bool CLTEModemIf::InitModem( string dev_name )
     cfsetispeed( &opt, B115200 );
     cfsetospeed (&opt, B115200 );
 
-    opt.c_cflag &= ~CSIZE;                            //×Ö·û³¤¶È£¨¾İËµÉèÖÃÊı¾İÎ»Ö®Ç°Ò»¶¨ÒªÏÈ¹Ø±ÕÒ»ÏÂ£©
-    opt.c_cflag |= CS8;                               //Êı¾İÎ»
-    opt.c_cflag &= ~CSTOPB;                           //Í£Ö¹Î»Îª1
-    opt.c_cflag &= ~PARENB;                           //ÎŞÆæÅ¼Ğ£Ñé
-    opt.c_cflag &= ~CRTSCTS;                          //²»Ê¹ÓÃÓ²¼şÁ÷¿Ø£¨ÒòÎªÎÒµÄÍø¿¨²»Ö§³Ö£©
-    opt.c_cflag |= IXON | IXOFF | IXANY;              //ÓÃÈí¼şÁ÷¿Ø
-    opt.c_cflag |= ( CLOCAL | CREAD );                //ºöÂÔËùÓĞ×´Ì¬ĞĞ£¬ÆôÓÃ×Ö·û½ÓÊÕÆ÷£¨¡­£¿£©
+    opt.c_cflag &= ~CSIZE;                            //å­—ç¬¦é•¿åº¦ï¼ˆæ®è¯´è®¾ç½®æ•°æ®ä½ä¹‹å‰ä¸€å®šè¦å…ˆå…³é—­ä¸€ä¸‹ï¼‰
+    opt.c_cflag |= CS8;                               //æ•°æ®ä½
+    opt.c_cflag &= ~CSTOPB;                           //åœæ­¢ä½ä¸º1
+    opt.c_cflag &= ~PARENB;                           //æ— å¥‡å¶æ ¡éªŒ
+    opt.c_cflag &= ~CRTSCTS;                          //ä¸ä½¿ç”¨ç¡¬ä»¶æµæ§ï¼ˆå› ä¸ºæˆ‘çš„ç½‘å¡ä¸æ”¯æŒï¼‰
+    opt.c_cflag |= IXON | IXOFF | IXANY;              //ç”¨è½¯ä»¶æµæ§
+    opt.c_cflag |= ( CLOCAL | CREAD );                //å¿½ç•¥æ‰€æœ‰çŠ¶æ€è¡Œï¼Œå¯ç”¨å­—ç¬¦æ¥æ”¶å™¨ï¼ˆâ€¦ï¼Ÿï¼‰
 
-    opt.c_lflag &= ~( ICANON | ECHO | ECHOE | ISIG ); //ÉèÖÃÎª±¾µØÄ£Ê½£¨É¶ÍæÒâ£¿£©
-    opt.c_oflag &= ~OPOST;                            //²»Ê¹ÓÃ×Ô¶¨ÒåÊä³ö´¦Àí£¨Ò²Ã»¿´¶®£©
+    opt.c_lflag &= ~( ICANON | ECHO | ECHOE | ISIG ); //è®¾ç½®ä¸ºæœ¬åœ°æ¨¡å¼ï¼ˆå•¥ç©æ„ï¼Ÿï¼‰
+    opt.c_oflag &= ~OPOST;                            //ä¸ä½¿ç”¨è‡ªå®šä¹‰è¾“å‡ºå¤„ç†ï¼ˆä¹Ÿæ²¡çœ‹æ‡‚ï¼‰
 
-    opt.c_cc[VTIME] = 3;                              //¶ÁÈ¡µÄ³¬Ê±Ê±¼ä£¬µ¥Î»100ms
-    opt.c_cc[VMIN]  = 1;                              //¶ÁÈ¡µÄ×îĞ¡×Ö·ûÊı
+    opt.c_cc[VTIME] = 3;                              //è¯»å–çš„è¶…æ—¶æ—¶é—´ï¼Œå•ä½100ms
+    opt.c_cc[VMIN]  = 1;                              //è¯»å–çš„æœ€å°å­—ç¬¦æ•°
 
-    tcflush( m_fd, TCIOFLUSH );                       //ÎªÃâ³öÏÖÆæ¹ÖµÄÎÊÌâ°Ñ¶ÁĞ´»º´æ¶¼Çå¿ÕÒ»ÏÂ
+    tcflush( m_fd, TCIOFLUSH );                       //ä¸ºå…å‡ºç°å¥‡æ€ªçš„é—®é¢˜æŠŠè¯»å†™ç¼“å­˜éƒ½æ¸…ç©ºä¸€ä¸‹
 
-    //¼¤»îÅäÖÃ£¬³öÎÊÌâ¿ÉÄÜÊÇusbÏßµÄ½ÓÍ·Ğ¾Æ¬»µÁË»òÕßÍø¿¨ÄÚ²¿ÀÏ»¯Ëğ»µÁË¡£
+    //æ¿€æ´»é…ç½®ï¼Œå‡ºé—®é¢˜å¯èƒ½æ˜¯usbçº¿çš„æ¥å¤´èŠ¯ç‰‡åäº†æˆ–è€…ç½‘å¡å†…éƒ¨è€åŒ–æŸåäº†ã€‚
     bool res = ( tcsetattr( m_fd, TCSANOW, &opt ) == 0 );
-    LogOutLine( "Communication attr set: " + to_string( res ), 3 );
+    LogOutLine( "Communication attr set: " + to_string( res ), 2 );
+    if( !res )
+    {
+        LogOutLine( to_string( errno ) + " " + strerror( errno ), 2 );
+        LogOutLine( "m_fd " + to_string( m_fd ), 2 );
+    }
+
     return res;
 }
 
@@ -112,14 +121,14 @@ int CLTEModemIf::GetSignalStrengthLevel()
 
     int res_value{0};
 
-    //ÁíÆğÏß³Ì¶ÁATÖ¸Áî·µ»ØÖµ
-    //·µ»ØÖµÃ»ÓĞ¿¿Æ×µÄ½áÊøÌØÕ÷¡­³ıÁËÖ¸¶¨Ê±¼äÄÚÖ¸ÁîÒ»¶¨»áÏìÓ¦·µ»ØÖ®ÍâÕâ¸öÍø¿¨Ã»ÓĞÈÎºÎ±£Ö¤¡£
+    //å¦èµ·çº¿ç¨‹è¯»ATæŒ‡ä»¤è¿”å›å€¼
+    //è¿”å›å€¼æ²¡æœ‰é è°±çš„ç»“æŸç‰¹å¾â€¦é™¤äº†æŒ‡å®šæ—¶é—´å†…æŒ‡ä»¤ä¸€å®šä¼šå“åº”è¿”å›ä¹‹å¤–è¿™ä¸ªç½‘å¡æ²¡æœ‰ä»»ä½•ä¿è¯ã€‚
     {
         lock_guard<mutex> lock( g_mux );
         ms_reply.clear();
-        thread at_reply_th( GetAtCmdReply, m_fd, "+CSQ: ", 300 );   //300msÄÚÍø¿¨¹Ì¼ş¾Í»áÏìÓ¦
+        thread at_reply_th( GetAtCmdReply, m_fd, "+CSQ: ", 300 );   //300mså†…ç½‘å¡å›ºä»¶å°±ä¼šå“åº”
 
-        //Õı³£1sÄÚ¿Ï¶¨·µ»ØÁË£¬µ«Ôø¾­Å¼È»±ï×¡¹ıÒ»´Î£¬±£ÏÕÆğ¼û
+        //æ­£å¸¸1så†…è‚¯å®šè¿”å›äº†ï¼Œä½†æ›¾ç»å¶ç„¶æ†‹ä½è¿‡ä¸€æ¬¡ï¼Œä¿é™©èµ·è§
         this_thread::sleep_for( std::chrono::milliseconds( 1000 ) );
         if( at_reply_th.joinable() )
         {
@@ -135,7 +144,7 @@ int CLTEModemIf::GetSignalStrengthLevel()
 
         LogOutLine( "AT+CSQ reply.", 1 );
         LogOutLine( ms_reply, 1 );
-        res_value = stoi( ms_reply.substr( 6, 2 ) ); //at_replyµÄÖµÀàËÆ"+CSQ: 28,99"ÕâÑù
+        res_value = stoi( ms_reply.substr( 6, 2 ) ); //at_replyçš„å€¼ç±»ä¼¼"+CSQ: 28,99"è¿™æ ·
     }
 
     int level{0};
@@ -159,7 +168,7 @@ int CLTEModemIf::DeregisterFromLTE()
     {
         lock_guard<mutex> lock( g_mux );
         ms_reply.clear();
-        thread at_reply_th( GetAtCmdReply, m_fd, "OK", 180000 );    //×î³¤180sÄÚÏìÓ¦
+        thread at_reply_th( GetAtCmdReply, m_fd, "OK", 180000 );    //æœ€é•¿180så†…å“åº”
 
         this_thread::sleep_for( std::chrono::milliseconds( 185000 ) );
         if( at_reply_th.joinable() )
@@ -188,7 +197,7 @@ int CLTEModemIf::AutomaticRegisterLTE()
     {
         lock_guard<mutex> lock( g_mux );
         ms_reply.clear();
-        thread at_reply_th( GetAtCmdReply, m_fd, "OK", 180000 );    //×î³¤180sÄÚÏìÓ¦
+        thread at_reply_th( GetAtCmdReply, m_fd, "OK", 180000 );    //æœ€é•¿180så†…å“åº”
 
         this_thread::sleep_for( std::chrono::milliseconds( 185000 ) );
         if( at_reply_th.joinable() )
