@@ -339,7 +339,7 @@ int main( int argc, char* argv[] )
                     execl( conf.connect_exe.c_str(), conf.connect_exe.c_str() + s, NULL ); //--------todo: args?
                 }
 
-                sleep( 10 );
+                sleep( 20 );
 
                 ping_res = Ping( conf.ping_target.c_str(), ping_count );
 
@@ -430,7 +430,7 @@ int main( int argc, char* argv[] )
             LogOutChars( &conf.connect_exe[s], 3 );
             execl( conf.connect_exe.c_str(), conf.connect_exe.c_str() + s, NULL ); //--------todo: args?
         }
-        sleep( 10 );
+        sleep( 20 );
     }
     //while( conf.enabled ) end
 
