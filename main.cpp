@@ -11,6 +11,9 @@
 #include <string>
 #include "Log.h"
 #include <cstdlib>
+#include <resolv.h> //res_init
+#include <errno.h>
+#include <cstring> //strerror
 
 using namespace std;
 
@@ -70,7 +73,7 @@ int Ping( const char* target_str, unsigned short num = 1 )
         if( !p_hostent || !p_hostent->h_addr )
         {
             LogOutLine( "Get host failed.", 1 );
-            return -1;  //大概DNS没连上
+            return -1;  //一般是DNS没连上
         }
 
         memcpy( &addr, p_hostent->h_addr_list[0], p_hostent->h_length );
@@ -151,6 +154,7 @@ int Ping( const char* target_str, unsigned short num = 1 )
         }
     }
 
+    shutdown( sock_fd, SHUT_RDWR );
     return res;
 }
 
@@ -339,8 +343,8 @@ int main( int argc, char* argv[] )
                     execl( conf.connect_exe.c_str(), conf.connect_exe.c_str() + s, NULL ); //--------todo: args?
                 }
 
-                sleep( 20 );
-
+                sleep( 15 );
+                res_init();
                 ping_res = Ping( conf.ping_target.c_str(), ping_count );
 
                 //还过慢的话，恐怕也就这样了
@@ -353,6 +357,8 @@ int main( int argc, char* argv[] )
         }
 
         //可以认为网已经没了。记录日志，检查状态，重新拨号
+        LogOutLine( "Current errno " + to_string( errno ) + " " + strerror( errno ), 3 );
+
         if( cm_pid != -1 )
         {
             kill( cm_pid, 15 );
@@ -430,7 +436,8 @@ int main( int argc, char* argv[] )
             LogOutChars( &conf.connect_exe[s], 3 );
             execl( conf.connect_exe.c_str(), conf.connect_exe.c_str() + s, NULL ); //--------todo: args?
         }
-        sleep( 20 );
+        sleep( 15 );
+        res_init();
     }
     //while( conf.enabled ) end
 
