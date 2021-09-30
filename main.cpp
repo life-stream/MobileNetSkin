@@ -154,7 +154,7 @@ int Ping( const char* target_str, unsigned short num = 1 )
         }
     }
 
-    shutdown( sock_fd, SHUT_RDWR );
+    close( sock_fd );
     return res;
 }
 
@@ -283,11 +283,13 @@ int main( int argc, char* argv[] )
     if( !LoadConfigFile( conf_file_name, conf ) )
     {
         LogOutLine( "Load config file failed." );
+        CloseLogFile();
         return 0;
     }
     if( !conf.enabled )
     {
         LogOutLine( "LTEService disabled." );
+        CloseLogFile();
         return 0;
     }
 
