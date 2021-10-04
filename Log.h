@@ -4,7 +4,7 @@
 #include <fstream>
 #include <string>
 
-extern void LogOutLine( std::string out_info, int log_lv = 0 );
+extern void LogOutLine( const std::string& out_info, int log_lv = 0 );
 
 extern void LogOutCharAsc( const char* out_info, unsigned int out_length, int log_lv = 0 );
 

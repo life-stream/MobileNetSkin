@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <unistd.h>
 #include "Log.h"
+#include <future>
 #include <errno.h>
 #include <cstring>
 
@@ -16,7 +17,7 @@ using namespace std;
 #define LINE_LENGTH 12
 
 mutex g_mux;
-string CLTEModemIf::ms_reply{""};
+bool CLTEModemIf::ms_get_reply{false};
 
 CLTEModemIf& CLTEModemIf::GetInstance()
 {
@@ -33,10 +34,10 @@ CLTEModemIf::~CLTEModemIf()
     close( m_fd );
 }
 
-bool CLTEModemIf::InitModem( string dev_name )
+bool CLTEModemIf::InitModem( const string& dev_name )
 {
     LogOutLine( "InitModem called.", 3 );
-    if( !filesystem::exists( dev_name ) ) //å‡ºé—®é¢˜å¤šåŠæ˜¯è®¾å¤‡è„±çº¿äº†
+    if( !filesystem::exists( dev_name ) ) //³öÎÊÌâ¶à°ëÊÇÉè±¸ÍÑÏßÁË
     {
         LogOutLine( "Usb communication interface offline.");
         return false;
@@ -53,23 +54,23 @@ bool CLTEModemIf::InitModem( string dev_name )
     cfsetispeed( &opt, B115200 );
     cfsetospeed (&opt, B115200 );
 
-    opt.c_cflag &= ~CSIZE;                            //å­—ç¬¦é•¿åº¦ï¼ˆæ®è¯´è®¾ç½®æ•°æ®ä½ä¹‹å‰ä¸€å®šè¦å…ˆå…³é—­ä¸€ä¸‹ï¼‰
-    opt.c_cflag |= CS8;                               //æ•°æ®ä½
-    opt.c_cflag &= ~CSTOPB;                           //åœæ­¢ä½ä¸º1
-    opt.c_cflag &= ~PARENB;                           //æ— å¥‡å¶æ ¡éªŒ
-    opt.c_cflag &= ~CRTSCTS;                          //ä¸ä½¿ç”¨ç¡¬ä»¶æµæ§ï¼ˆå› ä¸ºæˆ‘çš„ç½‘å¡ä¸æ”¯æŒï¼‰
-    opt.c_cflag |= IXON | IXOFF | IXANY;              //ç”¨è½¯ä»¶æµæ§
-    opt.c_cflag |= ( CLOCAL | CREAD );                //å¿½ç•¥æ‰€æœ‰çŠ¶æ€è¡Œï¼Œå¯ç”¨å­—ç¬¦æ¥æ”¶å™¨ï¼ˆâ€¦ï¼Ÿï¼‰
+    opt.c_cflag &= ~CSIZE;                            //×Ö·û³¤¶È£¨¾İËµÉèÖÃÊı¾İÎ»Ö®Ç°Ò»¶¨ÒªÏÈ¹Ø±ÕÒ»ÏÂ£©
+    opt.c_cflag |= CS8;                               //Êı¾İÎ»
+    opt.c_cflag &= ~CSTOPB;                           //Í£Ö¹Î»Îª1
+    opt.c_cflag &= ~PARENB;                           //ÎŞÆæÅ¼Ğ£Ñé
+    opt.c_cflag &= ~CRTSCTS;                          //²»Ê¹ÓÃÓ²¼şÁ÷¿Ø
+    opt.c_cflag |= IXON | IXOFF | IXANY;              //ÓÃÈí¼şÁ÷¿Ø
+    opt.c_cflag |= ( CLOCAL | CREAD );                //ºöÂÔËùÓĞ×´Ì¬ĞĞ£¬ÆôÓÃ×Ö·û½ÓÊÕÆ÷£¨¡­£¿£©
 
-    opt.c_lflag &= ~( ICANON | ECHO | ECHOE | ISIG ); //è®¾ç½®ä¸ºæœ¬åœ°æ¨¡å¼ï¼ˆå•¥ç©æ„ï¼Ÿï¼‰
-    opt.c_oflag &= ~OPOST;                            //ä¸ä½¿ç”¨è‡ªå®šä¹‰è¾“å‡ºå¤„ç†ï¼ˆä¹Ÿæ²¡çœ‹æ‡‚ï¼‰
+    opt.c_lflag &= ~( ICANON | ECHO | ECHOE | ISIG ); //ÉèÖÃÎª±¾µØÄ£Ê½£¨É¶ÍæÒâ£¿£©
+    opt.c_oflag &= ~OPOST;                            //²»Ê¹ÓÃ×Ô¶¨ÒåÊä³ö´¦Àí£¨Ò²Ã»¿´¶®£©
 
-    opt.c_cc[VTIME] = 3;                              //è¯»å–çš„è¶…æ—¶æ—¶é—´ï¼Œå•ä½100ms
-    opt.c_cc[VMIN]  = 1;                              //è¯»å–çš„æœ€å°å­—ç¬¦æ•°
+    opt.c_cc[VTIME] = 2;                              //¶ÁÈ¡µÄ³¬Ê±Ê±¼ä£¬µ¥Î»100ms
+    opt.c_cc[VMIN]  = 1;                              //¶ÁÈ¡µÄ×îĞ¡×Ö·ûÊı
 
-    tcflush( m_fd, TCIOFLUSH );                       //ä¸ºå…å‡ºç°å¥‡æ€ªçš„é—®é¢˜æŠŠè¯»å†™ç¼“å­˜éƒ½æ¸…ç©ºä¸€ä¸‹
+    tcflush( m_fd, TCIOFLUSH );                       //ÎªÃâ³öÏÖÆæ¹ÖµÄÎÊÌâ°Ñ¶ÁĞ´»º´æ¶¼Çå¿ÕÒ»ÏÂ
 
-    //æ¿€æ´»é…ç½®ï¼Œå‡ºé—®é¢˜å¯èƒ½æ˜¯usbçº¿çš„æ¥å¤´èŠ¯ç‰‡åäº†æˆ–è€…ç½‘å¡å†…éƒ¨è€åŒ–æŸåäº†ã€‚
+    //¼¤»îÅäÖÃ£¬³öÎÊÌâ¿ÉÄÜÊÇusbÏßµÄ½ÓÍ·Ğ¾Æ¬»µÁË»òÕßÍø¿¨ÄÚ²¿ÀÏ»¯Ëğ»µÁË¡£
     bool res = ( tcsetattr( m_fd, TCSANOW, &opt ) == 0 );
     LogOutLine( "Communication attr set: " + to_string( res ), 2 );
     if( !res )
@@ -81,7 +82,7 @@ bool CLTEModemIf::InitModem( string dev_name )
     return res;
 }
 
-bool CLTEModemIf::CheckWwanDevStatus( string dev_name )
+bool CLTEModemIf::CheckWwanDevStatus( const string& dev_name )
 {
     LogOutLine( "CheckWwanDevStatus called.", 3 );
     return filesystem::exists( dev_name );
@@ -93,25 +94,24 @@ bool CLTEModemIf::CheckSimCardStatus()
     string at_cmd{"AT+CPIN?\r"};
     write( m_fd, at_cmd.c_str(), at_cmd.length() );
 
-    lock_guard<mutex> lock( g_mux );
-    ms_reply.clear();
-    thread at_reply_th( GetAtCmdReply, m_fd, "READY", 5000 );
+    future<string> at_reply;
+    future_status reply_status;
 
-    this_thread::sleep_for( std::chrono::milliseconds( 6000 ) );
-    if( at_reply_th.joinable() )
     {
-        pthread_cancel( at_reply_th.native_handle() );
-    }
-    at_reply_th.join();
+        lock_guard<mutex> lock( g_mux );
+        ms_get_reply = true;
+        at_reply = async( launch::async, &CLTEModemIf::GetAtCmdReply, this, "READY" );
 
-    if( ms_reply.empty() )
+        reply_status = at_reply.wait_for( chrono::seconds( 5 ) );
+        ms_get_reply = false;
+    }
+    if( reply_status != future_status::ready )
     {
         LogOutLine( "AT+CPIN? no reply." );
-        return false;
+        return -1;  //ERROR
     }
 
     LogOutLine( "AT+CPIN? reply.", 1 );
-    LogOutLine( ms_reply, 1 );
     return true;
 }
 
@@ -122,31 +122,27 @@ int CLTEModemIf::GetSignalStrengthLevel()
     write( m_fd, at_cmd.c_str(), at_cmd.length() );
 
     int res_value{0};
+    future<string> at_reply;
+    future_status reply_status;
 
-    //å¦èµ·çº¿ç¨‹è¯»ATæŒ‡ä»¤è¿”å›å€¼
-    //è¿”å›å€¼æ²¡æœ‰é è°±çš„ç»“æŸç‰¹å¾â€¦é™¤äº†æŒ‡å®šæ—¶é—´å†…æŒ‡ä»¤ä¸€å®šä¼šå“åº”è¿”å›ä¹‹å¤–è¿™ä¸ªç½‘å¡æ²¡æœ‰ä»»ä½•ä¿è¯ã€‚
     {
         lock_guard<mutex> lock( g_mux );
-        ms_reply.clear();
-        thread at_reply_th( GetAtCmdReply, m_fd, "+CSQ: ", 300 );   //300mså†…ç½‘å¡å›ºä»¶å°±ä¼šå“åº”
+        ms_get_reply = true;
+        at_reply = async( launch::async, &CLTEModemIf::GetAtCmdReply, this, "+CSQ: " );
 
-        //æ­£å¸¸1så†…è‚¯å®šè¿”å›äº†ï¼Œä½†æ›¾ç»å¶ç„¶æ†‹ä½è¿‡ä¸€æ¬¡ï¼Œä¿é™©èµ·è§
-        this_thread::sleep_for( std::chrono::milliseconds( 1000 ) );
-        if( at_reply_th.joinable() )
-        {
-            pthread_cancel( at_reply_th.native_handle() );
-        }
-        at_reply_th.join();
-
-        if( ms_reply.empty() )
-        {
-            LogOutLine( "AT+CSQ no reply." );
-            return -1;   //ERROR
-        }
-
-        LogOutLine( "AT+CSQ reply.", 1 );
-        LogOutLine( ms_reply, 1 );
-        res_value = stoi( ms_reply.substr( 6, 2 ) ); //at_replyçš„å€¼ç±»ä¼¼"+CSQ: 28,99"è¿™æ ·
+        reply_status = at_reply.wait_for( chrono::milliseconds( 300 ) );
+        ms_get_reply = false;
+    }
+    if( reply_status == future_status::ready )
+    {
+        string reply = at_reply.get();
+        res_value = stoi( reply.substr( 6, 2 ) ); //at_replyµÄÖµÀàËÆ"+CSQ: 28,99"ÕâÑù
+        LogOutLine( "AT+CSQ reply.\n" + reply, 1 );
+    }
+    else
+    {
+        LogOutLine( "AT+CSQ no reply." );
+        return -1;   //ERROR
     }
 
     int level{0};
@@ -166,28 +162,23 @@ int CLTEModemIf::DeregisterFromLTE()
     LogOutLine( "DeregisterFromLTE called.", 3 );
     string at_cmd{"AT+COPS=2,2\r"};
     write( m_fd, at_cmd.c_str(), at_cmd.length() );
+    future_status reply_status;
 
     {
         lock_guard<mutex> lock( g_mux );
-        ms_reply.clear();
-        thread at_reply_th( GetAtCmdReply, m_fd, "OK", 180000 );    //æœ€é•¿180så†…å“åº”
+        ms_get_reply = true;
+        future<string> at_reply = async( launch::async, &CLTEModemIf::GetAtCmdReply, this, "OK" );
 
-        this_thread::sleep_for( std::chrono::milliseconds( 185000 ) );
-        if( at_reply_th.joinable() )
-        {
-            pthread_cancel( at_reply_th.native_handle() );
-        }
-        at_reply_th.join();
-
-        if( ms_reply.empty() )
-        {
-            LogOutLine( "AT+COPS=2,2 no reply." );
-            return -1;  //ERROR
-        }
+        reply_status = at_reply.wait_for( chrono::seconds( 180 ) );
+        ms_get_reply = false;
+    }
+    if( reply_status != future_status::ready )
+    {
+        LogOutLine( "AT+COPS=2,2 no reply." );
+        return -1;  //ERROR
     }
 
     LogOutLine( "AT+COPS=2,2 reply.", 1 );
-    LogOutLine( ms_reply, 1 );
     return 0;
 }
 int CLTEModemIf::AutomaticRegisterLTE()
@@ -195,57 +186,54 @@ int CLTEModemIf::AutomaticRegisterLTE()
     LogOutLine( "AutomaticRegisterLTE called.", 3 );
     string at_cmd{"AT+COPS=0\r"};
     write( m_fd, at_cmd.c_str(), at_cmd.length() );
+    future_status reply_status;
 
     {
         lock_guard<mutex> lock( g_mux );
-        ms_reply.clear();
-        thread at_reply_th( GetAtCmdReply, m_fd, "OK", 180000 );    //æœ€é•¿180så†…å“åº”
+        ms_get_reply = true;
+        future<string> at_reply = async( launch::async, &CLTEModemIf::GetAtCmdReply, this, "OK" );
 
-        this_thread::sleep_for( std::chrono::milliseconds( 185000 ) );
-        if( at_reply_th.joinable() )
-        {
-            pthread_cancel( at_reply_th.native_handle() );
-        }
-        at_reply_th.join();
-
-        if( ms_reply.empty() )
-        {
-            LogOutLine( "AT+COPS=0 no reply." );
-            return -1;  //ERROR
-        }
+        reply_status = at_reply.wait_for( chrono::seconds( 180 ) );
+        ms_get_reply = false;
+    }
+    if( reply_status != future_status::ready )
+    {
+        LogOutLine( "AT+COPS=0 no reply." );
+        return -1;  //ERROR
     }
 
     LogOutLine( "AT+COPS=0 reply.", 1 );
-    LogOutLine( ms_reply, 1 );
     return 0;
 }
 
-void CLTEModemIf::GetAtCmdReply( int modem_fd, string target, int waiting_ms )
+//µ¥¶ÀÆğÏß³Ì¶Á´®¿Ú·µ»ØÏûÏ¢£¬ÊÇÒòÎªÖ®Ç°Ê¹ÓÃÖĞÔø¾­ÔÚ¶ÁÈ¡Ê±±ï×¡¹ı£º
+//Ã»ÓĞÉèÖÃVMIN£¬Ã»ÓĞÈÎºÎÔ¤Õ×Ò²²»ÖªÔ­ÒòµØÍêÈ«×èÈûÔÚÁË²»ÖªÊ²Ã´µØ·½¡£
+//ÉèÖÃÁËVMINÎª0Ö®ºó£¬ÓÖ·¢Éú¹ıËÀ»î¶Á²»µ½·µ»ØÏûÏ¢µÄÎÊÌâ¡£
+//ËäÈ»¶¼ÊÇÃ»ÓĞÔÙÏÖ¹ıµÄÅ¼·¢ÊÂ¼ş£¬µ«»¹ÊÇÓ¦¸Ã´ÓÒ»¿ªÊ¼¾Í¿¼ÂÇÒª±ÜÃâ¡£
+string CLTEModemIf::GetAtCmdReply( const string& target )
 {
     this_thread::sleep_for(std::chrono::milliseconds( 100 ));
     char buf[MODEM_READBUF_SIZE];
     string s_buf;
-    for( int i {0}; i < waiting_ms; i+= 100 ) 
+    while( ms_get_reply ) 
     {
         memset( buf, 0, MODEM_READBUF_SIZE );
-        int l = read( modem_fd, buf, MODEM_READBUF_SIZE );
+        int l = read( m_fd, buf, MODEM_READBUF_SIZE );
         if( l == 0 ) continue;
         if( l== MODEM_READBUF_SIZE ) l--;
         buf[l] = '\0';
         s_buf = buf;
 
-        LogOutLine( "read " + to_string( i ), 2 );
         LogOutLine( "\n" + s_buf, 2 );
         LogOutCharAsc( buf, MODEM_READBUF_SIZE, 3 );
 
         int line = s_buf.find( target );
         if( line != string::npos )
         {
-            ms_reply = s_buf.substr( line, LINE_LENGTH );
-            break;
+            return s_buf.substr( line, LINE_LENGTH );
         }
+
         this_thread::sleep_for(std::chrono::milliseconds( 100 ));
     }
-    return;
+    return "NULL";
 }
-

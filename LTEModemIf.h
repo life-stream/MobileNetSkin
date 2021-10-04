@@ -8,21 +8,22 @@ public:
     static CLTEModemIf& GetInstance();
     virtual ~CLTEModemIf();
 
-    bool InitModem( std::string dev_name );
+    bool InitModem( const std::string& dev_name );
     int  GetSignalStrengthLevel();
     bool CheckSimCardStatus();
-    bool CheckWwanDevStatus( std::string dev_name );
+    bool CheckWwanDevStatus( const std::string& dev_name );
     int  DeregisterFromLTE();
     int  AutomaticRegisterLTE();
 
+    //读串口线程函数
+    std::string GetAtCmdReply( const std::string& target );
+
 private:
     CLTEModemIf();
-
-    //读串口线程函数
-    static void GetAtCmdReply( int modem_fd, std::string target, int waiting_ms = 300 );
+    CLTEModemIf( const CLTEModemIf& );
 
     int m_fd;   //串口设备文件描述符
 
-    static std::string ms_reply; //读&带返回值用
+    static bool ms_get_reply;
 };
 #endif

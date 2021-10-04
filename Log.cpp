@@ -9,7 +9,7 @@ static int dbg_lv;
 static ofstream log_file;
 static stringstream ss;
 
-void LogOutLine( string out_info, int log_lv )
+void LogOutLine( const string& out_info, int log_lv )
 {
     if( dbg_lv < log_lv ) return;
     if( !log_file.is_open() ) return;
@@ -31,6 +31,7 @@ void LogOutCharAsc( const char* out_info, unsigned int out_length, int log_lv )
 {
     if( dbg_lv < log_lv ) return;
     if( !log_file.is_open() ) return;
+    if( !out_info ) return;
 
     time_t timep;
     struct tm *p;
@@ -54,6 +55,7 @@ void LogOutChars( const char* out_info, int log_lv )
 {
     if( dbg_lv < log_lv ) return;
     if( !log_file.is_open() ) return;
+    if( !out_info ) return;
 
     time_t timep;
     struct tm *p;
@@ -79,6 +81,8 @@ void SetOutLevel( int lv )
 
 bool SetLogFile( const char* p_file_name )
 {
+    if( !p_file_name ) return;
+
     log_file.open( p_file_name );
     if( log_file.fail() ) 
         return false;

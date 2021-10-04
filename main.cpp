@@ -24,6 +24,7 @@ typedef struct _ConfItems
     string connect_exe;
     string wwan_dev;
     string usb_dev;
+    int    ping_interval;
 } ConfItems;
 
 typedef struct _ICMPPack
@@ -158,7 +159,7 @@ int Ping( const char* target_str, unsigned short num = 1 )
     return res;
 }
 
-bool LoadConfigFile( string file_name, ConfItems& conf )
+bool LoadConfigFile( string& file_name, ConfItems& conf )
 {
     LogOutLine( "LoadConfigFile "+ file_name +" start.", 3 );
 
@@ -255,6 +256,17 @@ bool LoadConfigFile( string file_name, ConfItems& conf )
     }
     LogOutLine( "usb_dev: " + conf.usb_dev, 2 );
 
+    const char* p_ping_interval = uci_lookup_option_string( p_context, p_section, "ping_interval" );
+    if( !p_ping_interval )
+    {
+        conf.ping_interval = 30;
+    }
+    else
+    {
+        conf.ping_interval = atoi( p_ping_interval );
+    }
+    LogOutLine( "ping_interval: " + to_string( conf.ping_interval ), 2 );
+
     uci_unload( p_context, p_pkg );
     uci_free_context( p_context );
     return true;
@@ -293,9 +305,11 @@ int main( int argc, char* argv[] )
         return 0;
     }
 
+    signal(SIGCHLD,SIG_IGN);
+
     LogOutLine( "LTEService start." );
 
-    int ping_interval = 30;  //ping时间间隔
+    int ping_interval = conf.ping_interval;  //ping时间间隔
     pid_t cm_pid = -1;
 
     while( conf.enabled )
@@ -359,7 +373,7 @@ int main( int argc, char* argv[] )
         }
 
         //可以认为网已经没了。记录日志，检查状态，重新拨号
-        LogOutLine( "Current errno " + to_string( errno ) + " " + strerror( errno ), 3 );
+        LogOutLine( "Info: current errno " + to_string( errno ) + " " + strerror( errno ), 3 );
 
         if( cm_pid != -1 )
         {
