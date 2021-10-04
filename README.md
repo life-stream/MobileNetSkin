@@ -18,11 +18,12 @@ $ make
 运行前需要准备如下UCI配置文件放到你趁手的地方：
 ```
 config ServiceArg 'conf'                    #请不要改动
-	option enabled      '1'             #请不要改动
-	option ping_target  'www.xxx...'    #用来测试网络是否通畅的网址或ip。
-	option connect_exe  '/usr/bin/xxx'  #网卡厂商提供的拨号程序，需要带完整路径。
-	option wwan_dev     '/dev/cdc-wdm0' #网卡猫设备文件，请参照用户手册确定文件名。
-	option usb_dev      '/dev/ttyUSB2'  #网卡模拟串口设备文件，请参照用户手册确定文件名。
+	option enabled      	'1'             #请不要改动
+	option ping_target  	'www.xxx...'    #用来测试网络是否通畅的网址或ip。
+	option connect_exe  	'/usr/bin/xxx'  #网卡厂商提供的拨号程序，需要带完整路径。
+	option wwan_dev     	'/dev/cdc-wdm0' #网卡猫设备文件，请参照用户手册确定文件名。
+	option usb_dev      	'/dev/ttyUSB2'  #网卡模拟串口设备文件，请参照用户手册确定文件名。
+	option ping_interval	'60'		#单位为秒。每隔这个时间做一次网络是否联通的检测。
 ```
 
 运行：LTEService 配置文件 日志文件名 日志等级
