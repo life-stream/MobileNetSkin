@@ -305,7 +305,7 @@ int main( int argc, char* argv[] )
         return 0;
     }
 
-    signal(SIGCHLD,SIG_IGN);
+    signal( SIGCHLD,SIG_IGN );
 
     LogOutLine( "LTEService start." );
 
@@ -428,13 +428,19 @@ int main( int argc, char* argv[] )
         //Ò»Ö±¼ì²é?
         while( i == 30 )
         {
+            if( ( modem.DeregisterFromLTE() != 0 ) || ( modem.AutomaticRegisterLTE() != 0 ) )
+            {
+                LogOutLine( "Base station regist failed.", 1 );
+                sleep( 120 );
+                continue;
+            }
             if( modem.GetSignalStrengthLevel() > 0 )
             {
                 break;
             }
             else
             {
-                LogOutLine( "Signal weak.", 1 );
+                LogOutLine( "Signal weak." );
                 sleep( 120 );
             }
         }
