@@ -10,9 +10,9 @@ CC=$(CROSS_COMPILE)g++ -std=c++17
 SRC=LTEModemIf.cpp main.cpp Log.cpp
 
 release:
-	$(CC) -Wall -s $(SRC)  -I $(HPATH)  -o LTEService  -L $(LPATH) -lstdc++fs -luci -lubox
+	$(CC) -Wall -s $(SRC)  -I $(HPATH)  -o mnets  -L $(LPATH) -lstdc++fs -luci -lubox
 
 
 .PHONY: clean
 clean:
-	-rm -rf  LTEService
+	-rm -rf  mnets
