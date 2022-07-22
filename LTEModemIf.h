@@ -12,8 +12,9 @@ public:
     int  GetSignalStrengthLevel();
     bool CheckSimCardStatus();
     bool CheckWwanDevStatus( const std::string& dev_name );
-    int  DeregisterFromLTE();
-    int  AutomaticRegisterLTE();
+    int  DeregisterFromMNet();
+    int  AutoRegisterMNet();
+    int  ResetUserEquipment();
 
     //读串口线程函数
     std::string GetAtCmdReply( const std::string& target );

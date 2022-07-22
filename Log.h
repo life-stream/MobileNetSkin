@@ -12,8 +12,10 @@ extern void LogOutChars( const char* out_info, int log_lv = 0 );
 
 extern void SetOutLevel( int lv );
 
-extern bool SetLogFile( const char* p_file_name );
+extern bool SetLogFile( std::string& file_name );
 
 extern void CloseLogFile();
+
+extern void DirectOutLine( const std::string& info );
 
 #endif

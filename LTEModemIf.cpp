@@ -39,7 +39,7 @@ bool CLTEModemIf::InitModem( const string& dev_name )
     LogOutLine( "InitModem called.", 3 );
     if( !filesystem::exists( dev_name ) ) //出问题多半是设备脱线了
     {
-        LogOutLine( "Usb communication interface offline.");
+        LogOutLine( "Device communication interface offline.");
         return false;
     }
 
@@ -54,6 +54,8 @@ bool CLTEModemIf::InitModem( const string& dev_name )
     cfsetispeed( &opt, B115200 );
     cfsetospeed (&opt, B115200 );
 
+    //-------以下来自匿名文档-------
+
     opt.c_cflag &= ~CSIZE;                            //字符长度（据说设置数据位之前一定要先关闭一下）
     opt.c_cflag |= CS8;                               //数据位
     opt.c_cflag &= ~CSTOPB;                           //停止位为1
@@ -65,12 +67,14 @@ bool CLTEModemIf::InitModem( const string& dev_name )
     opt.c_lflag &= ~( ICANON | ECHO | ECHOE | ISIG ); //设置为本地模式（啥玩意？）
     opt.c_oflag &= ~OPOST;                            //不使用自定义输出处理（也没看懂）
 
+    //------------------------------
+
     opt.c_cc[VTIME] = 2;                              //读取的超时时间，单位100ms
     opt.c_cc[VMIN]  = 1;                              //读取的最小字符数
 
     tcflush( m_fd, TCIOFLUSH );                       //为免出现奇怪的问题把读写缓存都清空一下
 
-    //激活配置，出问题可能是usb线的接头芯片坏了或者网卡内部老化损坏了。
+    //激活配置，出问题可能是连接线的接头芯片坏了或者网卡内部老化损坏了。
     bool res = ( tcsetattr( m_fd, TCSANOW, &opt ) == 0 );
     LogOutLine( "Communication attr set: " + to_string( res ), 2 );
     if( !res )
@@ -145,7 +149,7 @@ int CLTEModemIf::GetSignalStrengthLevel()
         return -1;   //ERROR
     }
 
-    int level{0};
+    int level {0};
     if( res_value == 99 )      level = 0;
     else if( res_value >= 30 ) level = 4;
     else if( res_value >= 23 ) level = 3;
@@ -157,9 +161,9 @@ int CLTEModemIf::GetSignalStrengthLevel()
     return level;
 }
 
-int CLTEModemIf::DeregisterFromLTE()
+int CLTEModemIf::DeregisterFromMNet()
 {
-    LogOutLine( "DeregisterFromLTE called.", 3 );
+    LogOutLine( "DeregisterFromMNet called.", 3 );
     string at_cmd{"AT+COPS=2,2\r"};
     write( m_fd, at_cmd.c_str(), at_cmd.length() );
     future_status reply_status;
@@ -181,9 +185,9 @@ int CLTEModemIf::DeregisterFromLTE()
     LogOutLine( "AT+COPS=2,2 reply.", 1 );
     return 0;
 }
-int CLTEModemIf::AutomaticRegisterLTE()
+int CLTEModemIf::AutoRegisterMNet()
 {
-    LogOutLine( "AutomaticRegisterLTE called.", 3 );
+    LogOutLine( "AutoRegisterMNet called.", 3 );
     string at_cmd{"AT+COPS=0\r"};
     write( m_fd, at_cmd.c_str(), at_cmd.length() );
     future_status reply_status;
@@ -203,6 +207,46 @@ int CLTEModemIf::AutomaticRegisterLTE()
     }
 
     LogOutLine( "AT+COPS=0 reply.", 1 );
+    return 0;
+}
+
+int CLTEModemIf::ResetUserEquipment()
+{
+    LogOutLine( "ResetUserEquipment called.", 3 );
+    string at_cmd{"AT+CFUN=0\r"};
+    write( m_fd, at_cmd.c_str(), at_cmd.length() );
+    future_status reply_status;
+
+    {
+        lock_guard<mutex> lock( g_mux );
+        ms_get_reply = true;
+        future<string> at_reply = async( launch::async, &CLTEModemIf::GetAtCmdReply, this, "OK" );
+
+        reply_status = at_reply.wait_for( chrono::seconds( 5 ) );
+        ms_get_reply = false;
+
+        if( reply_status != future_status::ready )
+        {
+            LogOutLine( "AT+CFUN=0 no reply." );
+            return -1;  //ERROR
+        }
+
+        string at_cmd{"AT+CFUN=1\r"};
+        write( m_fd, at_cmd.c_str(), at_cmd.length() );
+        ms_get_reply = true;
+        at_reply = async( launch::async, &CLTEModemIf::GetAtCmdReply, this, "+CPIN: READY" );
+
+        reply_status = at_reply.wait_for( chrono::seconds( 15 ) );
+        ms_get_reply = false;
+
+        if( reply_status != future_status::ready )
+        {
+            LogOutLine( "AT+CFUN=1 no reply." );
+            return -1;  //ERROR
+        }
+    }
+
+    LogOutLine( "ResetUserEquipment success.", 1 );
     return 0;
 }
 

@@ -17,15 +17,20 @@
 
 using namespace std;
 
-typedef struct _ConfItems
+typedef struct _ConnArgs
 {
-    bool   enabled;
-    string ping_target;
     string connect_exe;
     string wwan_dev;
-    string usb_dev;
+    string tty_dev;
+    string ping_target;
     int    ping_interval;
-} ConfItems;
+} ConnArgs;
+
+typedef struct _LogArgs
+{
+    string file_name;
+    int    lv;
+} LogArgs;
 
 typedef struct _ICMPPack
 {
@@ -37,12 +42,22 @@ typedef struct _ICMPPack
     unsigned long  time;
 } ICMPPack;
 
+enum EN_MODEM_ACTION{
+    EN_NONE = 0,
+    EN_RESET,
+    EN_DEREGISTER,
+    EN_REGISTER,
+    EN_CONNECT
+};
+
+static pid_t s_cm_pid{-1};
+
 unsigned short Checksum( void* buffer, int len )
 {
     LogOutLine( "Checksum called.", 3 );
 
-    unsigned short* p = (unsigned short*)buffer;
-    int sum{0};
+    unsigned short* p {( unsigned short* )buffer};
+    int sum {0};
 
     while( len > 1 )
     {
@@ -51,13 +66,13 @@ unsigned short Checksum( void* buffer, int len )
     }
     if( len == 1 )
     {
-        unsigned short t{0};
+        unsigned short t {0};
         *( unsigned char* )( &t ) = *( unsigned char* )p;
         sum += t;
     }
 
     sum = ( sum >> 16 ) + ( sum & 0xffff );
-    sum += (sum >> 16);
+    sum += ( sum >> 16 );
     return( ~sum );
 }
 
@@ -81,7 +96,7 @@ int Ping( const char* target_str, unsigned short num = 1 )
     }
 
     struct sockaddr_in dest_addr;
-    dest_addr.sin_family      = AF_INET;
+    dest_addr.sin_family = AF_INET;
     dest_addr.sin_addr.s_addr = addr;
 
     //socket
@@ -92,9 +107,9 @@ int Ping( const char* target_str, unsigned short num = 1 )
         return -2;  //八成系统本身故障。
     }
 
-    int res = 0;
+    int res {0};
 
-    for( int i = 0; i < num; i++ )
+    for( int i {0}; i < num; i++ )
     { 
         //ICMP请求包初始化
         ICMPPack request;
@@ -117,7 +132,7 @@ int Ping( const char* target_str, unsigned short num = 1 )
             continue;
         }
 
-        char recvbuf[1500];
+        unsigned char recvbuf[1500];
         struct sockaddr_in src_addr;
         socklen_t size = sizeof( sockaddr_in ); //不初始化取不到发送地址值，大概是据此分配sockaddr的空间。
 
@@ -130,12 +145,12 @@ int Ping( const char* target_str, unsigned short num = 1 )
 
         gettimeofday( &time, NULL );    //回报到达时间
 
-        unsigned char h = recvbuf[0];
-        h = ( h & 0x0f ) * 4;           //IP包头长度计算
+        unsigned char h { ( recvbuf[0] & 0x0f ) * 4 }; //IP包头长度计算
+
         ICMPPack reply;
         memcpy( &reply, recvbuf + h, sizeof( reply ) );
 
-        //不能直接getpid
+        //request.identifier，不能直接getpid
         if( ( reply.identifier != request.identifier ) ||
             ( reply.type != 0 ) ||
             ( src_addr.sin_addr.s_addr != dest_addr.sin_addr.s_addr ) ||
@@ -147,7 +162,7 @@ int Ping( const char* target_str, unsigned short num = 1 )
         }
 
         //海外网络有时候会延迟1秒，但此时网页还是可以凑合看。再多就是丢包丢得没法用了。
-        unsigned long cost = ( time.tv_usec - reply.time ) / 1000;  //ms
+        unsigned long cost { ( time.tv_usec - reply.time ) / 1000 };  //ms
         if( cost >  1500 )
         {
             LogOutLine( "Ping: reply slowly. res + 1", 3 );
@@ -159,9 +174,24 @@ int Ping( const char* target_str, unsigned short num = 1 )
     return res;
 }
 
-bool LoadConfigFile( string& file_name, ConfItems& conf )
+void QuitMnets( int sig )
 {
-    LogOutLine( "LoadConfigFile "+ file_name +" start.", 3 );
+    if( s_cm_pid != -1 )
+    {
+        kill( s_cm_pid, 15 );
+        s_cm_pid = -1;
+
+        LogOutLine( "Connect exe quit." );
+    }
+
+    DirectOutLine( "Mnets quit." );
+    CloseLogFile();
+    exit( 0 );
+}
+
+bool LoadConfigFile( string& file_name, ConnArgs& conn )
+{
+    LogOutLine( "LoadConfigFile "+ file_name +" start." );
 
     struct uci_context* p_context = uci_alloc_context();
     struct uci_package* p_pkg = NULL;
@@ -173,7 +203,7 @@ bool LoadConfigFile( string& file_name, ConfItems& conf )
         return false;
     }
 
-    struct uci_section* p_section = uci_lookup_section( p_context, p_pkg, "conf" );
+    struct uci_section* p_section = uci_lookup_section( p_context, p_pkg, "conn" );
     if( !p_section )
     {
         LogOutLine( "uci_lookup_section error." );
@@ -181,32 +211,23 @@ bool LoadConfigFile( string& file_name, ConfItems& conf )
         uci_free_context( p_context );
         return false;
     }
-    LogOutLine( "ServiceArg: conf", 2 );
+    LogOutLine( "ConnectArg: conn", 2 );
 
     stringstream ss;
-    const char* p_enabled = uci_lookup_option_string( p_context, p_section, "enabled" );
-    if( !p_enabled )
+    const char* p_ping_target = uci_lookup_option_string( p_context, p_section, "ping_target" );
+    if( !p_ping_target )
     {
-        LogOutLine( "Lookup option enabled error.", 1 );
+        LogOutLine( "Lookup option ping_target error.", 1 );
         uci_unload( p_context, p_pkg );
         uci_free_context( p_context );
         return false;
     }
-    conf.enabled = ( *p_enabled == '1' );
-    LogOutLine( "enabled: " + to_string( conf.enabled ), 2 );
-
-    const char* p_ping_target = uci_lookup_option_string( p_context, p_section, "ping_target" );
-    if( !p_ping_target )
-    {
-        conf.ping_target = "www.bing.com";
-    }
     else
     {
-        ss.str( "" );ss.clear();
         ss << p_ping_target;
-        getline( ss, conf.ping_target );
+        getline( ss, conn.ping_target );
     }
-    LogOutLine( "ping_target: " + conf.ping_target, 2 );
+    LogOutLine( "ping_target: " + conn.ping_target, 2 );
 
     const char* p_connect_exe = uci_lookup_option_string( p_context, p_section, "connect_exe" );
     if( !p_connect_exe )
@@ -220,9 +241,9 @@ bool LoadConfigFile( string& file_name, ConfItems& conf )
     {
         ss.str( "" );ss.clear();
         ss << p_connect_exe;
-        getline( ss, conf.connect_exe );
+        getline( ss, conn.connect_exe );
     }
-    LogOutLine( "connect_exe: " + conf.connect_exe, 2 );
+    LogOutLine( "connect_exe: " + conn.connect_exe, 2 );
 
     const char* p_wwan_dev = uci_lookup_option_string( p_context, p_section, "wwan_dev" );
     if( !p_wwan_dev )
@@ -236,14 +257,14 @@ bool LoadConfigFile( string& file_name, ConfItems& conf )
     {
         ss.str( "" );ss.clear();
         ss << p_wwan_dev;
-        getline( ss, conf.wwan_dev );
+        getline( ss, conn.wwan_dev );
     }
-    LogOutLine( "wwan_dev: " + conf.wwan_dev, 2 );
+    LogOutLine( "wwan_dev: " + conn.wwan_dev, 2 );
 
-    const char* p_usb_dev = uci_lookup_option_string( p_context, p_section, "usb_dev" );
-    if( !p_usb_dev )
+    const char* p_tty_dev = uci_lookup_option_string( p_context, p_section, "tty_dev" );
+    if( !p_tty_dev )
     {
-        LogOutLine( "Lookup option usb_dev error.", 1 );
+        LogOutLine( "Lookup option tty_dev error.", 1 );
         uci_unload( p_context, p_pkg );
         uci_free_context( p_context );
         return false;
@@ -251,21 +272,21 @@ bool LoadConfigFile( string& file_name, ConfItems& conf )
     else
     {
         ss.str( "" );ss.clear();
-        ss << p_usb_dev;
-        getline( ss, conf.usb_dev );
+        ss << p_tty_dev;
+        getline( ss, conn.tty_dev );
     }
-    LogOutLine( "usb_dev: " + conf.usb_dev, 2 );
+    LogOutLine( "tty_dev: " + conn.tty_dev, 2 );
 
     const char* p_ping_interval = uci_lookup_option_string( p_context, p_section, "ping_interval" );
     if( !p_ping_interval )
     {
-        conf.ping_interval = 30;
+        conn.ping_interval = 30;
     }
     else
     {
-        conf.ping_interval = atoi( p_ping_interval );
+        conn.ping_interval = atoi( p_ping_interval );
     }
-    LogOutLine( "ping_interval: " + to_string( conf.ping_interval ), 2 );
+    LogOutLine( "ping_interval: " + to_string( conn.ping_interval ), 2 );
 
     uci_unload( p_context, p_pkg );
     uci_free_context( p_context );
@@ -274,50 +295,61 @@ bool LoadConfigFile( string& file_name, ConfItems& conf )
 
 int main( int argc, char* argv[] )
 {
-    //log文件和log等级
-    if( argc > 2 )
+    ConnArgs conn;
+    LogArgs log;
+    int c;
+
+    while( ( c = getopt( argc, argv, "r:n:" ) ) != -1 )
     {
-        if ( !SetLogFile( argv[2] ) ) return 1;
-    }
-    else
-    {
-        if ( !SetLogFile( "./lte_status.log" ) ) return 1;
+        switch( c )
+        {
+            case 'r':
+                log.file_name = optarg;
+                break;
+            case 'n':
+                log.lv = optarg ? stoi( optarg ) : 0;
+                break;
+        }
     }
 
-    if( argc > 3 )
-        SetOutLevel( atoi( argv[3] ) );
+    //log文件和log等级
+    //不开log时等级为负，不设置文件
+    if( !log.file_name.empty() )
+    {
+        if ( !SetLogFile( log.file_name ) ) return 1;
+        SetOutLevel( log.lv );
+    }
     else
-        SetOutLevel( 0 );
+    {
+        SetOutLevel( -1 );
+    }
+
 
     //读配置文件
-    string conf_file_name = ( argc > 1 ) ? argv[1] : "./LTEServiceConf";
-    ConfItems conf;
-    if( !LoadConfigFile( conf_file_name, conf ) )
+    string conf_file_name = ( optind < argc ) ? argv[optind] : "/etc/config/mnets";
+
+    if( !LoadConfigFile( conf_file_name, conn ) )
     {
-        LogOutLine( "Load config file failed." );
-        CloseLogFile();
-        return 0;
-    }
-    if( !conf.enabled )
-    {
-        LogOutLine( "LTEService disabled." );
+        DirectOutLine( "Load config file failed." );
         CloseLogFile();
         return 0;
     }
 
-    signal( SIGCHLD,SIG_IGN );
+    signal( SIGCHLD, SIG_IGN );
+    signal( SIGTERM, QuitMnets );
+    signal( SIGINT, QuitMnets );
+    signal( SIGQUIT, QuitMnets );
 
-    LogOutLine( "LTEService start." );
+    LogOutLine( "Mnets start." );
 
-    int ping_interval = conf.ping_interval;  //ping时间间隔
-    pid_t cm_pid = -1;
+    int ping_interval = conn.ping_interval;  //ping时间间隔
 
-    while( conf.enabled )
+    while( true )
     {
         //网络测试。
-        int ping_res{-1};
-        int ping_count = 4;
-        ping_res = Ping( conf.ping_target.c_str(), ping_count );
+        int ping_res {-1};
+        int ping_count {4};
+        ping_res = Ping( conn.ping_target.c_str(), ping_count );
         LogOutLine( "ping_res: " + to_string( ping_res ), 1 );
 
         //状态良好就直接退出
@@ -329,7 +361,7 @@ int main( int argc, char* argv[] )
 
         //连接
         CLTEModemIf& modem = CLTEModemIf::GetInstance();
-        if( !modem.InitModem( conf.usb_dev ) )
+        if( !modem.InitModem( conn.tty_dev ) )
         {
             LogOutLine( "Modem offline." );
             break;
@@ -340,46 +372,116 @@ int main( int argc, char* argv[] )
         {
             LogOutLine( "Too slow. Test reconnected." );
 
-            if( ( modem.DeregisterFromLTE() == 0 ) && ( modem.AutomaticRegisterLTE() == 0 ) )
+            EN_MODEM_ACTION next_sp{EN_DEREGISTER},last_sp{EN_NONE};
+
+            while( next_sp != EN_NONE )
             {
-                kill( cm_pid, 15 );
-                cm_pid = -1;
-
-                if( ( cm_pid = fork() ) < 0 )
+                switch( next_sp )
                 {
-                    LogOutLine( "Connect manager exec failed." );
-                    continue;
-                }
+                    case EN_RESET:
+                    {
+                        last_sp = EN_RESET;
 
-                if( cm_pid == 0 )
-                {
-                    LogOutLine( "Connect manager exec start.", 1 );
-                    int s = conf.connect_exe.find_last_of( '/' ) + 1;
-                    LogOutChars( &conf.connect_exe[s], 3 );
-                    execl( conf.connect_exe.c_str(), conf.connect_exe.c_str() + s, NULL ); //--------todo: args?
-                }
+                        if( modem.ResetUserEquipment() == 0 )
+                        {
+                            sleep( 1 );
+                            next_sp = EN_CONNECT;
+                        }
+                        else
+                        {
+                            LogOutLine( "Reset failed." );
+                            LogOutLine( "Check the connection status of device.");
+                            QuitMnets( 15 );
+                        }
+                        break;
+                    }
+                    case EN_DEREGISTER:
+                    {
+                        last_sp = EN_DEREGISTER;
+                        kill( s_cm_pid, 15 );
+                        s_cm_pid = -1;
 
-                sleep( 15 );
-                res_init();
-                ping_res = Ping( conf.ping_target.c_str(), ping_count );
+                        if( ( modem.DeregisterFromMNet() == 0 ) )
+                        {
+                            sleep( 1 );
+                            next_sp = EN_REGISTER;
+                        }
+                        else
+                        {
+                            LogOutLine( "Deregister failed." );
+                            next_sp = EN_RESET;
+                        }
+                        break;
+                    }
+                    case EN_REGISTER:
+                    {
+                        last_sp = EN_REGISTER;
 
-                //还过慢的话，恐怕也就这样了
-                if( ( ping_res <= 7 ) && ( ping_res >= 0 ) )
-                {
-                    sleep( ping_interval );
-                    continue;
+                        if( modem.AutoRegisterMNet() == 0 )
+                        {
+                            next_sp = EN_CONNECT;
+                        }
+                        else
+                        {
+                            LogOutLine( "Register failed." );
+                            next_sp = EN_RESET;
+                        }
+                        break;
+                    }
+                    case EN_CONNECT:
+                    {
+                        last_sp = EN_CONNECT;
+
+                        if( ( s_cm_pid = fork() ) < 0 )
+                        {
+                            LogOutLine( "Connect exe failed." );
+                            //怎么处理
+                        }
+                        if( s_cm_pid == 0 )
+                        {
+                            LogOutLine( "Connect exe start." );
+                            int s = conn.connect_exe.find_last_of( '/' ) + 1;
+                            LogOutChars( &conn.connect_exe[s], 3 );
+                            execl( conn.connect_exe.c_str(), conn.connect_exe.c_str() + s, NULL ); //--------todo: args?
+                        }
+                        sleep( 15 );
+                        res_init();
+
+                        ping_res = Ping( conn.ping_target.c_str(), ping_count );
+
+                        if( ( last_sp == EN_REGISTER ) && ( ping_res >= 4 ) )
+                        {
+                            kill( s_cm_pid, 15 );
+                            s_cm_pid = -1;
+                            next_sp = EN_RESET;
+                            break;
+                        }
+
+                        //还过慢的话，恐怕也就这样了
+                        if( ( ping_res <= 7 ) && ( ping_res >= 0 ) )
+                        {
+                            sleep( ping_interval );
+                            next_sp = EN_NONE;
+                        }
+                        break;
+                    }
+                    default:
+                    {
+                        LogOutLine( "Unknown action enum value: " + to_string( next_sp ) );
+                        break;
+                    }
                 }
-            }
-        }
+            }//while( next_sp != EN_NONE ) end
+        } //if( ( ping_res >= 4 ) && ( ping_res <= 7 ) ) end
 
         //可以认为网已经没了。记录日志，检查状态，重新拨号
         LogOutLine( "Info: current errno " + to_string( errno ) + " " + strerror( errno ), 3 );
 
-        if( cm_pid != -1 )
+        if( s_cm_pid != -1 )
         {
-            kill( cm_pid, 15 );
-            cm_pid = -1;
-            LogOutLine( "Last connect manager over." );
+            kill( s_cm_pid, 15 );
+            s_cm_pid = -1;
+            LogOutLine( "Last connect exe quit." );
         }
 
         //socket获取失败了
@@ -390,15 +492,15 @@ int main( int argc, char* argv[] )
         }
 
         //wwan设备脱线否
-        if( !modem.CheckWwanDevStatus( conf.wwan_dev ) )
+        if( !modem.CheckWwanDevStatus( conn.wwan_dev ) )
         {
             LogOutLine( "Wwan device lost." );
             break;
         }
 
         //sim卡状态检查
-        bool sim_aru = false;
-        for(int i = 0; i < 3; i++ )
+        bool sim_aru{false};
+        for(int i {0}; i < 3; i++ )
         {
             sim_aru |= modem.CheckSimCardStatus();
             if( sim_aru ) break;
@@ -411,7 +513,7 @@ int main( int argc, char* argv[] )
         }
 
         //信号强度检查
-        int i = 0;
+        int i {0};
         for( ; i < 30; i++ )
         {
             if( modem.GetSignalStrengthLevel() > 0 )
@@ -428,11 +530,28 @@ int main( int argc, char* argv[] )
         //一直检查?
         while( i == 30 )
         {
-            if( ( modem.DeregisterFromLTE() != 0 ) || ( modem.AutomaticRegisterLTE() != 0 ) )
+            if( ( modem.DeregisterFromMNet() != 0 ) || ( modem.AutoRegisterMNet() != 0 ) )
             {
-                LogOutLine( "Base station regist failed.", 1 );
-                sleep( 120 );
-                continue;
+                LogOutLine( "Net register failed.", 1 );
+            }
+            else
+            {
+                if( modem.GetSignalStrengthLevel() > 0 )
+                {
+                    break;
+                }
+            }
+
+            if( modem.ResetUserEquipment() != 0 )
+            {
+                LogOutLine( "ResetUserEquipment failed.", 1 );
+                sleep( 60 );
+
+                if( modem.ResetUserEquipment() != 0 )
+                {
+                    LogOutLine( "Reset failed twice. Check the device.");
+                    QuitMnets( 15 );
+                }
             }
             if( modem.GetSignalStrengthLevel() > 0 )
             {
@@ -440,37 +559,38 @@ int main( int argc, char* argv[] )
             }
             else
             {
-                LogOutLine( "Signal weak." );
+                LogOutLine( "Signal weak continue." );
                 sleep( 120 );
             }
         }
 
         //拨号
-        if( ( cm_pid = fork() ) < 0 )
+        if( ( s_cm_pid = fork() ) < 0 )
         {
-            LogOutLine( "Connect manager exec failed." );
+            LogOutLine( "Connect exe failed." );
             break;
         }
-        if( cm_pid == 0 )
+        if( s_cm_pid == 0 )
         {
-            LogOutLine( "Connect manager exec start.", 1 );
-            int s = conf.connect_exe.find_last_of( '/' ) + 1;
-            LogOutChars( &conf.connect_exe[s], 3 );
-            execl( conf.connect_exe.c_str(), conf.connect_exe.c_str() + s, NULL ); //--------todo: args?
+            LogOutLine( "Connect exe start." );
+            int s = conn.connect_exe.find_last_of( '/' ) + 1;
+            LogOutChars( &conn.connect_exe[s], 3 );
+            execl( conn.connect_exe.c_str(), conn.connect_exe.c_str() + s, NULL ); //--------todo: args?
         }
         sleep( 15 );
         res_init();
     }
-    //while( conf.enabled ) end
+    //while( true ) end
 
-    if( cm_pid != -1 )
+    if( s_cm_pid != -1 )
     {
-        kill( cm_pid, 15 );
-        cm_pid = -1;
+        kill( s_cm_pid, 15 );
+        s_cm_pid = -1;
 
-        LogOutLine( "Connect manager over." );
+        LogOutLine( "Connect exe quit." );
     }
 
+    DirectOutLine( "Mnets quit." );
     CloseLogFile();
     return 0;
 }

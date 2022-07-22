@@ -17,7 +17,7 @@ void LogOutLine( const string& out_info, int log_lv )
     time_t timep;
     struct tm *p;
     time( &timep );
-    p=localtime( &timep ); //取得当地时间
+    p = localtime( &timep ); //取得当地时间
 
     log_file << std::setfill( '0' );
     log_file << "[" << 1900+p->tm_year << "-" << std::setw( 2 ) << 1+p->tm_mon << "-" << std::setw( 2 ) << p->tm_mday << " ";
@@ -36,13 +36,13 @@ void LogOutCharAsc( const char* out_info, unsigned int out_length, int log_lv )
     time_t timep;
     struct tm *p;
     time( &timep );
-    p=localtime( &timep ); //取得当地时间
+    p = localtime( &timep ); //取得当地时间
 
     log_file << std::setfill( '0' );
     log_file << "[" << 1900+p->tm_year << "-" << std::setw( 2 ) << 1+p->tm_mon << "-" << std::setw( 2 ) << p->tm_mday << " ";
     log_file << p->tm_hour << ":" << std::setw( 2 ) << p->tm_min << ":" << std::setw( 2 ) << p->tm_sec << "] " << endl;
 
-    for( unsigned int i = 0; i < out_length; i++ )
+    for( unsigned int i {0}; i < out_length; i++ )
         log_file << ( int )out_info[i] << " ";
 
     log_file << endl;
@@ -76,14 +76,14 @@ void LogOutChars( const char* out_info, int log_lv )
 void SetOutLevel( int lv )
 {
     dbg_lv = lv;
-    if( ( dbg_lv < 0 ) || ( dbg_lv > 3 ) ) dbg_lv = 1;
+    if( dbg_lv > 3 ) dbg_lv = 1;
 }
 
-bool SetLogFile( const char* p_file_name )
+bool SetLogFile( string& file_name )
 {
-    if( !p_file_name ) return;
+    if( file_name.empty() ) return false;
 
-    log_file.open( p_file_name );
+    log_file.open( file_name );
     if( log_file.fail() ) 
         return false;
 
@@ -93,4 +93,9 @@ bool SetLogFile( const char* p_file_name )
 void CloseLogFile()
 {
     log_file.close();
+}
+
+void DirectOutLine( const string& info )
+{
+    cout << info << endl;
 }
